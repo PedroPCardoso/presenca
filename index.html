@@ -134,7 +134,7 @@ function load() {
 }
 function save() { localStorage.setItem(KEY, JSON.stringify(st)); }
 
-const nomes = g => [...PADRAO[g], ...st.extras[g]];
+const nomes = g => [...PADRAO[g], ...st.extras[g]].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
 const id = (g, n) => g + ":" + n;
 
 function render() {
