@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Lista de Presença</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    background: #f2f4f3; color: #1d2b24;
+  }
+  header {
+    position: sticky; top: 0; z-index: 2;
+    background: #1f6f4a; color: #fff; padding: 14px 16px 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  header h1 { margin: 0; font-size: 20px; }
+  .sub { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 14px; }
+  .sub input[type=date] {
+    border: 0; border-radius: 6px; padding: 4px 6px; font-size: 14px; font-family: inherit;
+  }
+  .count { margin-left: auto; font-weight: 700; font-size: 16px; }
+  main { max-width: 560px; margin: 0 auto; padding: 12px 12px 180px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #5b6b63; margin: 18px 4px 8px; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  li button.person {
+    width: 100%; display: flex; align-items: center; gap: 12px;
+    background: #fff; border: 2px solid #e1e6e3; border-radius: 12px;
+    padding: 12px 14px; font-size: 17px; font-family: inherit; color: inherit;
+    text-align: left; cursor: pointer; transition: background .12s, border-color .12s;
+  }
+  li button.person .box {
+    width: 26px; height: 26px; border-radius: 8px; border: 2px solid #b9c4be;
+    display: grid; place-items: center; font-size: 16px; color: #fff; flex: none;
+  }
+  li button.person.on { background: #e5f4ec; border-color: #2f9e67; }
+  li button.person.on .box { background: #2f9e67; border-color: #2f9e67; }
+  li button.person .rm {
+    margin-left: auto; color: #a33; font-size: 13px; padding: 2px 6px;
+  }
+  .add { display: flex; gap: 8px; margin-top: 18px; }
+  .add input {
+    flex: 1; padding: 12px; font-size: 16px; border-radius: 10px; border: 2px solid #d5ddd8; font-family: inherit;
+  }
+  .add select { padding: 0 8px; border-radius: 10px; border: 2px solid #d5ddd8; font-size: 15px; background: #fff; }
+  .add button { padding: 0 16px; border-radius: 10px; border: 0; background: #1f6f4a; color: #fff; font-size: 16px; }
+  footer {
+    position: fixed; left: 0; right: 0; bottom: 0; background: #fff;
+    border-top: 1px solid #dde3df; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+  .bar { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .copy {
+    flex: 1; padding: 15px; font-size: 17px; font-weight: 700; border: 0; border-radius: 12px;
+    background: #25d366; color: #073b1f; cursor: pointer;
+  }
+  .ghost {
+    padding: 15px 14px; font-size: 15px; border-radius: 12px; border: 2px solid #d5ddd8;
+    background: #fff; color: #444; cursor: pointer;
+  }
+  label.opt { font-size: 14px; color: #4a5a52; display: flex; align-items: center; gap: 6px; }
+  .toast {
+    position: fixed; left: 50%; bottom: 130px; transform: translateX(-50%);
+    background: #1d2b24; color: #fff; padding: 10px 16px; border-radius: 20px; font-size: 15px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+  textarea#out {
+    width: 100%; min-height: 160px; margin-top: 18px; padding: 12px; font-size: 14px;
+    border-radius: 10px; border: 2px dashed #c6d0ca; font-family: ui-monospace, Menlo, monospace; background: #fff;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lista de Presença</h1>
+  <div class="sub">
+    <input type="date" id="data">
+    <span class="count" id="count">0 presentes</span>
+  </div>
+</header>
+
+<main>
+  <h2>Adultos</h2>
+  <ul id="adultos"></ul>
+  <h2>Crianças</h2>
+  <ul id="criancas"></ul>
+
+  <div class="add">
+    <input id="novo" placeholder="Adicionar nome (visitante)">
+    <select id="novoTipo">
+      <option value="adultos">Adulto</option>
+      <option value="criancas">Criança</option>
+    </select>
+    <button id="addBtn">+</button>
+  </div>
+
+  <h2>Texto para o WhatsApp</h2>
+  <textarea id="out" readonly></textarea>
+</main>
+
+<footer>
+  <div class="bar">
+    <div class="row">
+      <label class="opt"><input type="checkbox" id="incAus"> incluir ausentes</label>
+    </div>
+    <div class="row">
+      <button class="ghost" id="limpar">Limpar</button>
+      <button class="copy" id="copiar">Copiar lista</button>
+    </div>
+  </div>
+</footer>
+<div class="toast" id="toast">Lista copiada!</div>
+
+<script>
+const PADRAO = {
+  adultos: ["Joziene","Beatriz","Cicero","Tassiane","Ariana","Cátia","Iolanda","Marcela","Daiana","João","Tamara","Marileide","Tadeu","Grasielle","Beto","Cristina","Betânia","Sineide","Isaías","Andressa","Pedro","Rubens","Samuel","Deise","Gilmar","Gilvan","Mirella"],
+  criancas: ["Rute","Levi"]
+};
+const KEY = "presenca-v1";
+const hoje = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+let st = load();
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && s.extras) return s;
+  } catch (e) {}
+  return { data: hoje(), presentes: [], extras: { adultos: [], criancas: [] }, incAus: false };
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(st)); }
+
+const nomes = g => [...PADRAO[g], ...st.extras[g]];
+const id = (g, n) => g + ":" + n;
+
+function render() {
+  for (const g of ["adultos", "criancas"]) {
+    const ul = document.getElementById(g);
+    ul.innerHTML = "";
+    for (const n of nomes(g)) {
+      const on = st.presentes.includes(id(g, n));
+      const extra = st.extras[g].includes(n);
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.className = "person" + (on ? " on" : "");
+      b.innerHTML = `<span class="box">${on ? "✓" : ""}</span><span></span>${extra ? '<span class="rm">remover</span>' : ""}`;
+      b.children[1].textContent = n;
+      b.onclick = ev => {
+        if (ev.target.classList.contains("rm")) {
+          st.extras[g] = st.extras[g].filter(x => x !== n);
+          st.presentes = st.presentes.filter(x => x !== id(g, n));
+        } else {
+          const k = id(g, n);
+          st.presentes = on ? st.presentes.filter(x => x !== k) : [...st.presentes, k];
+        }
+        save(); render();
+      };
+      li.appendChild(b);
+      ul.appendChild(li);
+    }
+  }
+  const total = st.presentes.length;
+  document.getElementById("count").textContent = total + (total === 1 ? " presente" : " presentes");
+  document.getElementById("data").value = st.data;
+  document.getElementById("incAus").checked = st.incAus;
+  document.getElementById("out").value = texto();
+}
+
+function texto() {
+  const [a, m, d] = st.data.split("-");
+  const pres = g => nomes(g).filter(n => st.presentes.includes(id(g, n)));
+  const aus = g => nomes(g).filter(n => !st.presentes.includes(id(g, n)));
+  const lista = arr => arr.length ? arr.map((n, i) => `${i + 1}. ${n}`).join("\n") : "—";
+  const pa = pres("adultos"), pc = pres("criancas");
+  let t = `*Presença - ${d}/${m}/${a}*\n\n`;
+  t += `*Adultos (${pa.length})*\n${lista(pa)}\n\n`;
+  t += `*Crianças (${pc.length})*\n${lista(pc)}\n\n`;
+  t += `*Total: ${pa.length + pc.length}*`;
+  if (st.incAus) {
+    const aus_ = [...aus("adultos"), ...aus("criancas")];
+    t += `\n\n_Ausentes (${aus_.length})_\n${lista(aus_)}`;
+  }
+  return t;
+}
+
+async function copiar() {
+  const t = texto();
+  try {
+    await navigator.clipboard.writeText(t);
+  } catch (e) {
+    const ta = document.getElementById("out");
+    ta.value = t; ta.removeAttribute("readonly"); ta.select();
+    document.execCommand("copy"); ta.setAttribute("readonly", "");
+  }
+  const toast = document.getElementById("toast");
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 1600);
+}
+
+function adicionar() {
+  const inp = document.getElementById("novo");
+  const n = inp.value.trim();
+  const g = document.getElementById("novoTipo").value;
+  if (!n || nomes(g).includes(n)) { inp.value = ""; return; }
+  st.extras[g].push(n);
+  st.presentes.push(id(g, n));
+  inp.value = "";
+  save(); render();
+}
+
+document.getElementById("data").onchange = e => { st.data = e.target.value || hoje(); save(); render(); };
+document.getElementById("incAus").onchange = e => { st.incAus = e.target.checked; save(); render(); };
+document.getElementById("copiar").onclick = copiar;
+document.getElementById("addBtn").onclick = adicionar;
+document.getElementById("novo").onkeydown = e => { if (e.key === "Enter") adicionar(); };
+document.getElementById("limpar").onclick = () => {
+  if (!confirm("Desmarcar todos e começar uma nova lista?")) return;
+  st.presentes = []; st.extras = { adultos: [], criancas: [] }; st.data = hoje();
+  save(); render();
+};
+
+render();
+</script>
+</body>
+</html>
