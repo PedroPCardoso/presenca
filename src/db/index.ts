@@ -8,7 +8,7 @@ if (!url) throw new Error("DATABASE_URL não configurada");
 
 // Reaproveita a conexão entre recarregamentos do dev server.
 const globalForDb = globalThis as unknown as { pg?: ReturnType<typeof postgres> };
-const client = globalForDb.pg ?? postgres(url, { max: 5 });
+const client = globalForDb.pg ?? postgres(url, { max: 5, prepare: false });
 if (process.env.NODE_ENV !== "production") globalForDb.pg = client;
 
 export const db = drizzle(client, { schema });
