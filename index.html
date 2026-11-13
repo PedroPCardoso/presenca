@@ -36,8 +36,13 @@
   }
   li button.person.on { background: #e5f4ec; border-color: #2f9e67; }
   li button.person.on .box { background: #2f9e67; border-color: #2f9e67; }
+  li button.person .vis {
+    margin-left: auto; font-size: 12px; padding: 4px 9px; border-radius: 20px;
+    border: 1.5px solid #c9d2cd; color: #7a8a82; background: #fff; flex: none;
+  }
+  li button.person .vis.on { background: #f59e0b; border-color: #f59e0b; color: #fff; font-weight: 700; }
   li button.person .rm {
-    margin-left: auto; color: #a33; font-size: 13px; padding: 2px 6px;
+    color: #a33; font-size: 13px; padding: 2px 6px; flex: none;
   }
   .add { display: flex; gap: 8px; margin-top: 18px; }
   .add input {
@@ -88,12 +93,15 @@
   <ul id="criancas"></ul>
 
   <div class="add">
-    <input id="novo" placeholder="Adicionar nome (visitante)">
+    <input id="novo" placeholder="Adicionar nome">
     <select id="novoTipo">
       <option value="adultos">Adulto</option>
       <option value="criancas">Criança</option>
     </select>
     <button id="addBtn">+</button>
+  </div>
+  <div class="add" style="margin-top:8px">
+    <label class="opt"><input type="checkbox" id="novoVis" checked> é visitante</label>
   </div>
 
   <h2>Texto para o WhatsApp</h2>
@@ -115,8 +123,8 @@
 
 <script>
 const PADRAO = {
-  adultos: ["Joziene","Beatriz","Cicero","Tassiane","Ariana","Cátia","Iolanda","Marcela","Daiana","João","Tamara","Marileide","Tadeu","Grasielle","Beto","Cristina","Betânia","Sineide","Isaías","Andressa","Pedro","Rubens","Samuel","Deise","Gilmar","Gilvan","Mirella"],
-  criancas: ["Rute","Levi"]
+  adultos: ["Joziene","Beatriz","Cicero","Tassiane","Ariana","Cátia","Iolanda","Marcela","Daiana","João","Tamara","Marileide","Tadeu","Grasielle","Beto","Cristina","Betânia","Sineide","Isaías","Andressa","Pedro","Rafael","Rubens","Samuel","Deise","Gilmar","Gilvan","Mirella","Vanessa"],
+  criancas: ["Rute","Levi","Alice"]
 };
 const KEY = "presenca-v1";
 const hoje = () => {
@@ -128,13 +136,13 @@ let st = load();
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && s.extras) return s;
+    if (s && s.extras) { s.visitantes = s.visitantes || []; return s; }
   } catch (e) {}
-  return { data: hoje(), presentes: [], extras: { adultos: [], criancas: [] }, incAus: false };
+  return { data: hoje(), presentes: [], extras: { adultos: [], criancas: [] }, incAus: false, visitantes: [] };
 }
 function save() { localStorage.setItem(KEY, JSON.stringify(st)); }
 
-const nomes = g => [...PADRAO[g], ...st.extras[g]].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+const nomes = g => [...new Set([...PADRAO[g], ...st.extras[g]])].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
 const id = (g, n) => g + ":" + n;
 
 function render() {
@@ -143,18 +151,22 @@ function render() {
     ul.innerHTML = "";
     for (const n of nomes(g)) {
       const on = st.presentes.includes(id(g, n));
-      const extra = st.extras[g].includes(n);
+      const extra = st.extras[g].includes(n) && !PADRAO[g].includes(n);
+      const vis = st.visitantes.includes(id(g, n));
       const li = document.createElement("li");
       const b = document.createElement("button");
       b.className = "person" + (on ? " on" : "");
-      b.innerHTML = `<span class="box">${on ? "✓" : ""}</span><span></span>${extra ? '<span class="rm">remover</span>' : ""}`;
+      b.innerHTML = `<span class="box">${on ? "✓" : ""}</span><span></span><span class="vis${vis ? " on" : ""}">visitante</span>${extra ? '<span class="rm">remover</span>' : ""}`;
       b.children[1].textContent = n;
       b.onclick = ev => {
-        if (ev.target.classList.contains("rm")) {
+        const k = id(g, n);
+        if (ev.target.classList.contains("vis")) {
+          st.visitantes = vis ? st.visitantes.filter(x => x !== k) : [...st.visitantes, k];
+        } else if (ev.target.classList.contains("rm")) {
           st.extras[g] = st.extras[g].filter(x => x !== n);
-          st.presentes = st.presentes.filter(x => x !== id(g, n));
+          st.presentes = st.presentes.filter(x => x !== k);
+          st.visitantes = st.visitantes.filter(x => x !== k);
         } else {
-          const k = id(g, n);
           st.presentes = on ? st.presentes.filter(x => x !== k) : [...st.presentes, k];
         }
         save(); render();
@@ -172,14 +184,21 @@ function render() {
 
 function texto() {
   const [a, m, d] = st.data.split("-");
-  const pres = g => nomes(g).filter(n => st.presentes.includes(id(g, n)));
-  const aus = g => nomes(g).filter(n => !st.presentes.includes(id(g, n)));
+  const isV = (g, n) => st.visitantes.includes(id(g, n));
+  const isP = (g, n) => st.presentes.includes(id(g, n));
+  const pres = g => nomes(g).filter(n => isP(g, n) && !isV(g, n));
+  const aus = g => nomes(g).filter(n => !isP(g, n) && !isV(g, n));
+  const vis = [
+    ...nomes("adultos").filter(n => isP("adultos", n) && isV("adultos", n)),
+    ...nomes("criancas").filter(n => isP("criancas", n) && isV("criancas", n)).map(n => n + " (criança)")
+  ];
   const lista = arr => arr.length ? arr.map((n, i) => `${i + 1}. ${n}`).join("\n") : "—";
   const pa = pres("adultos"), pc = pres("criancas");
   let t = `*Presença - ${d}/${m}/${a}*\n\n`;
   t += `*Adultos (${pa.length})*\n${lista(pa)}\n\n`;
   t += `*Crianças (${pc.length})*\n${lista(pc)}\n\n`;
-  t += `*Total: ${pa.length + pc.length}*`;
+  if (vis.length) t += `*Visitantes (${vis.length})*\n${lista(vis)}\n\n`;
+  t += `*Total: ${pa.length + pc.length + vis.length}*`;
   if (st.incAus) {
     const aus_ = [...aus("adultos"), ...aus("criancas")];
     t += `\n\n_Ausentes (${aus_.length})_\n${lista(aus_)}`;
@@ -208,6 +227,7 @@ function adicionar() {
   if (!n || nomes(g).includes(n)) { inp.value = ""; return; }
   st.extras[g].push(n);
   st.presentes.push(id(g, n));
+  if (document.getElementById("novoVis").checked) st.visitantes.push(id(g, n));
   inp.value = "";
   save(); render();
 }
@@ -218,8 +238,9 @@ document.getElementById("copiar").onclick = copiar;
 document.getElementById("addBtn").onclick = adicionar;
 document.getElementById("novo").onkeydown = e => { if (e.key === "Enter") adicionar(); };
 document.getElementById("limpar").onclick = () => {
-  if (!confirm("Desmarcar todos e começar uma nova lista?")) return;
-  st.presentes = []; st.extras = { adultos: [], criancas: [] }; st.data = hoje();
+  if (!confirm("Desmarcar todos, remover os visitantes e começar uma nova lista?")) return;
+  for (const g of ["adultos", "criancas"]) st.extras[g] = st.extras[g].filter(n => !st.visitantes.includes(id(g, n)));
+  st.presentes = []; st.visitantes = []; st.data = hoje();
   save(); render();
 };
 
