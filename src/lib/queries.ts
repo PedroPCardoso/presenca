@@ -1,24 +1,33 @@
 import "server-only";
 import { cache } from "react";
-import { and, asc, desc, eq, gte } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { attendances, meetings, members } from "@/db/schema";
+import { attendances, groups, meetings } from "@/db/schema";
 import { requireGroup } from "./dal";
-import { sortByName } from "./names";
+import { loadListState, loadMeeting, loadRoster } from "./list-data";
 import type { MeetingRecord } from "./stats";
-import { addDays, todayISO } from "./dates";
+
+/** Leituras do líder: todas passam pela DAL (sessão + liderança do GC). */
 
 export const getRoster = cache(async (groupId: number) => {
   await requireGroup(groupId);
-  const rows = await db
-    .select()
-    .from(members)
-    .where(eq(members.groupId, groupId))
-    .orderBy(asc(members.name));
-  return {
-    active: sortByName(rows.filter((m) => m.active)),
-    inactive: sortByName(rows.filter((m) => !m.active)),
-  };
+  return loadRoster(groupId);
+});
+
+export const getMeeting = cache(async (groupId: number, meetingId: number) => {
+  await requireGroup(groupId);
+  return loadMeeting(groupId, meetingId);
+});
+
+export const getListState = cache(async (groupId: number, date: string) => {
+  await requireGroup(groupId);
+  return loadListState(groupId, date);
+});
+
+export const getShareToken = cache(async (groupId: number) => {
+  await requireGroup(groupId);
+  const [row] = await db.select({ token: groups.shareToken }).from(groups).where(eq(groups.id, groupId));
+  return row?.token ?? null;
 });
 
 /** Todos os encontros com as presenças, do mais antigo ao mais recente. */
@@ -28,6 +37,7 @@ export const getMeetingRecords = cache(async (groupId: number): Promise<MeetingR
     .select({
       id: meetings.id,
       date: meetings.date,
+      via: meetings.submittedVia,
       memberId: attendances.memberId,
       name: attendances.name,
       isVisitor: attendances.isVisitor,
@@ -41,7 +51,7 @@ export const getMeetingRecords = cache(async (groupId: number): Promise<MeetingR
   for (const r of rows) {
     let m = byId.get(r.id);
     if (!m) {
-      m = { id: r.id, date: r.date, memberIds: [], visitors: [], total: 0 };
+      m = { id: r.id, date: r.date, via: r.via, memberIds: [], visitors: [], total: 0 };
       byId.set(r.id, m);
     }
     if (r.name === null) continue;
@@ -50,47 +60,4 @@ export const getMeetingRecords = cache(async (groupId: number): Promise<MeetingR
     else if (r.memberId !== null) m.memberIds.push(r.memberId);
   }
   return [...byId.values()];
-});
-
-export const getMeeting = cache(async (groupId: number, meetingId: number) => {
-  await requireGroup(groupId);
-  const [meeting] = await db
-    .select()
-    .from(meetings)
-    .where(and(eq(meetings.id, meetingId), eq(meetings.groupId, groupId)))
-    .limit(1);
-  if (!meeting) return null;
-  const people = await db
-    .select()
-    .from(attendances)
-    .where(eq(attendances.meetingId, meeting.id));
-  return { ...meeting, people: sortByName(people) };
-});
-
-export const getMeetingByDate = cache(async (groupId: number, date: string) => {
-  await requireGroup(groupId);
-  const [meeting] = await db
-    .select({ id: meetings.id })
-    .from(meetings)
-    .where(and(eq(meetings.groupId, groupId), eq(meetings.date, date)))
-    .limit(1);
-  return meeting ? getMeeting(groupId, meeting.id) : null;
-});
-
-/** Visitantes dos últimos 90 dias, para sugerir na lista com um toque. */
-export const getRecentVisitors = cache(async (groupId: number) => {
-  await requireGroup(groupId);
-  const since = addDays(todayISO(), -90);
-  const rows = await db
-    .select({ name: attendances.name, kind: attendances.kind, date: meetings.date })
-    .from(attendances)
-    .innerJoin(meetings, eq(meetings.id, attendances.meetingId))
-    .where(and(eq(meetings.groupId, groupId), eq(attendances.isVisitor, true), gte(meetings.date, since)))
-    .orderBy(desc(meetings.date));
-  const seen = new Map<string, { name: string; kind: "adulto" | "crianca" }>();
-  for (const r of rows) {
-    const key = r.name.toLocaleLowerCase("pt-BR");
-    if (!seen.has(key)) seen.set(key, { name: r.name, kind: r.kind });
-  }
-  return sortByName([...seen.values()]);
 });

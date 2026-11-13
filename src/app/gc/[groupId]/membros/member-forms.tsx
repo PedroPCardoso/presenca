@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Loader2, Pencil, Plus, RotateCcw, UserMinus } from "lucide-react";
-import { addMember, setMemberActive, updateMember } from "@/actions/members";
+import { ListPlus, Loader2, Pencil, Plus, RotateCcw, UserMinus } from "lucide-react";
+import { addMember, addMembersBulk, setMemberActive, updateMember } from "@/actions/members";
 import { btn, card, input } from "@/components/ui";
 
 type Kind = "adulto" | "crianca";
@@ -47,6 +47,53 @@ export function AddMemberForm({ groupId }: { groupId: number }) {
         {state?.error ?? state?.ok}
       </p>
     </form>
+  );
+}
+
+export function BulkAddForm({ groupId, open = false }: { groupId: number; open?: boolean }) {
+  const [state, action, pending] = useActionState(addMembersBulk, undefined);
+  // Estado próprio: não fecha sozinho quando a lista deixa de estar vazia.
+  const [isOpen, setOpen] = useState(open);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (state?.ok) formRef.current?.reset();
+  }, [state]);
+
+  return (
+    <details
+      open={isOpen}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+      className={`${card} group`}
+    >
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 font-semibold">
+        <ListPlus className="size-4" aria-hidden /> Adicionar vários de uma vez
+      </summary>
+      <form ref={formRef} action={action} className="space-y-3 border-t border-border p-4">
+        <input type="hidden" name="groupId" value={groupId} />
+        <label htmlFor="bulk-names" className="block text-sm text-muted">
+          Um nome por linha. Pode colar a lista do WhatsApp.
+        </label>
+        <textarea
+          id="bulk-names"
+          name="names"
+          rows={8}
+          required
+          placeholder={"Ana\nBruno\nCarla"}
+          className={`${input} py-2`}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <KindSelect id="bulk-kind" />
+          <button type="submit" disabled={pending} className={btn.primary}>
+            {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Plus className="size-4" aria-hidden />}
+            Adicionar todos
+          </button>
+        </div>
+        <p role="status" className={`text-sm ${state?.error ? "text-danger" : "text-primary"}`}>
+          {state?.error ?? state?.ok}
+        </p>
+      </form>
+    </details>
   );
 }
 

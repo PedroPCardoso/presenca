@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import { requireGroup } from "@/lib/dal";
 import { getRoster } from "@/lib/queries";
 import { card } from "@/components/ui";
-import { AddMemberForm, MemberRow, ReactivateButton } from "./member-forms";
+import Link from "next/link";
+import { PartyPopper } from "lucide-react";
+import { AddMemberForm, BulkAddForm, MemberRow, ReactivateButton } from "./member-forms";
 
 export const metadata: Metadata = { title: "Membros" };
 
-export default async function MembrosPage({ params }: PageProps<"/gc/[groupId]/membros">) {
+export default async function MembrosPage({ params, searchParams }: PageProps<"/gc/[groupId]/membros">) {
   const { groupId } = await params;
+  const { novo } = await searchParams;
   const { group } = await requireGroup(Number(groupId));
   const { active, inactive } = await getRoster(group.id);
   const adults = active.filter((m) => m.kind === "adulto");
@@ -22,7 +25,24 @@ export default async function MembrosPage({ params }: PageProps<"/gc/[groupId]/m
         </p>
       </div>
 
+      {novo && (
+        <div role="status" className="flex items-start gap-3 rounded-2xl bg-primary-soft p-4 text-primary">
+          <PartyPopper className="mt-0.5 size-5 shrink-0" aria-hidden />
+          <div>
+            <p className="font-semibold">{group.name} criado!</p>
+            <p className="text-sm">
+              Agora cadastre os membros. Depois é só ir no{" "}
+              <Link href={`/gc/${group.id}`} className="font-semibold underline">
+                painel
+              </Link>{" "}
+              e fazer a primeira lista.
+            </p>
+          </div>
+        </div>
+      )}
+
       <AddMemberForm groupId={group.id} />
+      <BulkAddForm groupId={group.id} open={active.length === 0} />
 
       {[
         { title: "Adultos", list: adults },

@@ -14,6 +14,9 @@ import {
 
 export const personKind = pgEnum("person_kind", ["adulto", "crianca"]);
 
+/** Quem confirmou a lista: o líder logado ou alguém pelo link público. */
+export const submittedVia = pgEnum("submitted_via", ["lider", "link"]);
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
@@ -39,6 +42,8 @@ export const sessions = pgTable(
 export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  /** Token do link público da lista de presença (null = link desativado). */
+  shareToken: text("share_token").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -80,6 +85,7 @@ export const meetings = pgTable(
       .references(() => groups.id, { onDelete: "cascade" }),
     date: date("date", { mode: "string" }).notNull(),
     createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    submittedVia: submittedVia("submitted_via").notNull().default("lider"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { ChevronsUpDown, Users } from "lucide-react";
 import { requireGroup } from "@/lib/dal";
 import { LogoutButton } from "@/components/logout-button";
 import { GroupNav } from "@/components/group-nav";
@@ -37,11 +37,16 @@ async function GroupHeader({ params }: { params: Params }) {
   const base = `/gc/${group.id}`;
   return (
     <>
-      <Link href={base} className="flex min-h-11 min-w-0 items-center gap-2.5 font-bold">
+      <Link
+        href="/gcs"
+        className="-ml-2 flex min-h-11 min-w-0 items-center gap-2.5 rounded-xl px-2 font-bold transition-colors hover:bg-bg"
+        aria-label={`${group.name} — trocar de GC`}
+      >
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-on-primary">
           <Users className="size-4" aria-hidden />
         </span>
         <span className="truncate">{group.name}</span>
+        <ChevronsUpDown className="size-4 shrink-0 text-muted" aria-hidden />
       </Link>
       <div className="ml-auto flex items-center">
         <GroupNav base={base} className="hidden md:flex" />

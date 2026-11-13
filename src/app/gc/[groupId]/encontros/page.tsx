@@ -32,7 +32,14 @@ export default async function EncontrosPage({ params }: PageProps<"/gc/[groupId]
             <li key={m.id}>
               <Link href={`${base}/encontros/${m.id}`} className="flex min-h-16 items-center gap-3 px-5 hover:bg-bg">
                 <div className="flex-1">
-                  <div className="font-semibold">{formatBR(m.date)}</div>
+                  <div className="font-semibold">
+                    {formatBR(m.date)}
+                    {m.via === "link" && (
+                      <span className="ml-2 rounded-full bg-bg px-2 py-0.5 text-xs font-medium text-muted">
+                        pelo link
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm capitalize text-muted">{formatLong(m.date)}</div>
                 </div>
                 <div className="text-right text-sm">

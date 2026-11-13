@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { AlertTriangle, CalendarDays, ChevronRight, ClipboardCheck, TrendingUp, UserPlus } from "lucide-react";
 import { requireGroup } from "@/lib/dal";
-import { getMeetingRecords, getRoster } from "@/lib/queries";
+import { getMeetingRecords, getRoster, getShareToken } from "@/lib/queries";
 import { memberFrequency, summarize } from "@/lib/stats";
 import { formatBR, formatLong, formatShort } from "@/lib/dates";
 import { btn, card } from "@/components/ui";
 import { AttendanceChart } from "@/components/attendance-chart";
+import { ShareLinkCard } from "@/components/share-link-card";
 
 const WINDOW = 8;
 const ATTENTION_MAX = 6;
@@ -13,7 +14,11 @@ const ATTENTION_MAX = 6;
 export default async function Dashboard({ params }: PageProps<"/gc/[groupId]">) {
   const { groupId } = await params;
   const { group } = await requireGroup(Number(groupId));
-  const [roster, meetings] = await Promise.all([getRoster(group.id), getMeetingRecords(group.id)]);
+  const [roster, meetings, shareToken] = await Promise.all([
+    getRoster(group.id),
+    getMeetingRecords(group.id),
+    getShareToken(group.id),
+  ]);
 
   const summary = summarize(meetings);
   const freq = memberFrequency(roster.active, meetings, WINDOW);
@@ -38,6 +43,8 @@ export default async function Dashboard({ params }: PageProps<"/gc/[groupId]">) 
           Fazer lista de presença
         </Link>
       </section>
+
+      <ShareLinkCard groupId={group.id} groupName={group.name} token={shareToken} />
 
       {/* Números */}
       <section aria-label="Resumo" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -163,7 +170,10 @@ export default async function Dashboard({ params }: PageProps<"/gc/[groupId]">) 
                     href={`${base}/encontros/${m.id}`}
                     className="flex min-h-14 items-center gap-3 px-5 hover:bg-bg"
                   >
-                    <span className="flex-1 font-medium">{formatBR(m.date)}</span>
+                    <span className="flex-1 font-medium">
+                      {formatBR(m.date)}
+                      {m.via === "link" && <ViaLinkBadge />}
+                    </span>
                     <span className="text-sm text-muted">
                       {m.total} presentes{m.visitors.length ? ` · ${m.visitors.length} visitantes` : ""}
                     </span>
@@ -211,6 +221,12 @@ function Legend() {
         <span className="size-3 rounded-full border-2 border-border-strong" /> faltou
       </span>
     </div>
+  );
+}
+
+function ViaLinkBadge() {
+  return (
+    <span className="ml-2 rounded-full bg-bg px-2 py-0.5 text-xs font-medium text-muted">pelo link</span>
   );
 }
 

@@ -11,8 +11,8 @@ export const kindSchema = z.enum(["adulto", "crianca"]);
 
 export const dateSchema = z.string().refine(isISODate, "Data inválida");
 
-export const attendanceInputSchema = z.object({
-  groupId: z.number().int().positive(),
+/** O que a tela de lista envia ao confirmar (o GC vem do contexto: sessão ou link). */
+export const listSubmissionSchema = z.object({
   date: dateSchema,
   people: z
     .array(
@@ -26,4 +26,5 @@ export const attendanceInputSchema = z.object({
     .max(300),
 });
 
-export type AttendanceInput = z.infer<typeof attendanceInputSchema>;
+export type ListSubmission = z.input<typeof listSubmissionSchema>;
+export type ListPeople = z.output<typeof listSubmissionSchema>["people"];

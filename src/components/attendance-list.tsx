@@ -2,26 +2,26 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Check, Copy, Info, Loader2, Plus, UserPlus, X } from "lucide-react";
-import { saveAttendance } from "@/actions/attendance";
+import { AlertCircle, Check, CheckCircle2, Copy, Info, Loader2, Plus, UserPlus, X } from "lucide-react";
+import type { SaveResult } from "@/actions/attendance";
+import type { ListSubmission } from "@/lib/validation";
 import { btn, card, input } from "@/components/ui";
 import { formatBR, formatLong, isISODate } from "@/lib/dates";
 import { cleanName, compareNames, sameName } from "@/lib/names";
 import { buildWhatsAppText } from "@/lib/whatsapp";
 
-export type Person = {
-  key: string;
-  memberId: number | null;
-  name: string;
-  kind: "adulto" | "crianca";
-  isVisitor: boolean;
-  present: boolean;
-  /** Adicionado na hora (não é da lista fixa) — pode ser removido. */
-  added?: boolean;
-};
+import type { ListPerson as Person } from "@/lib/list-data";
 
 type Props = {
-  groupId: number;
+  /** "leader": líder logado (redireciona ao salvar). "public": link público (mostra tela de sucesso). */
+  mode: "leader" | "public";
+  /** Identifica o rascunho local (GC ou token). */
+  draftScope: string;
+  /** Server Action já ligada ao GC/token. */
+  save: (input: ListSubmission) => Promise<SaveResult>;
+  /** Limites da data no link público. */
+  minDate?: string;
+  maxDate?: string;
   groupName: string;
   date: string;
   initialPeople: Person[];
@@ -29,9 +29,21 @@ type Props = {
   recentVisitors: { name: string; kind: "adulto" | "crianca" }[];
 };
 
-const draftKey = (groupId: number, date: string) => `gc-presenca:${groupId}:${date}`;
+const draftKey = (scope: string, date: string) => `gc-presenca:${scope}:${date}`;
 
-export function AttendanceList({ groupId, groupName, date, initialPeople, alreadySaved, recentVisitors }: Props) {
+export function AttendanceList({
+  mode,
+  draftScope,
+  save,
+  minDate,
+  maxDate,
+  groupName,
+  date,
+  initialPeople,
+  alreadySaved,
+  recentVisitors,
+}: Props) {
+  const isPublic = mode === "public";
   const router = useRouter();
   const [people, setPeople] = useState(initialPeople);
   const [restored, setRestored] = useState(false);
@@ -39,12 +51,13 @@ export function AttendanceList({ groupId, groupName, date, initialPeople, alread
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
+  const [savedOk, setSavedOk] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const hydrated = useRef(false);
 
   // Rascunho local: não perde as marcações se a página fechar antes de confirmar.
   useEffect(() => {
-    const raw = localStorage.getItem(draftKey(groupId, date));
+    const raw = localStorage.getItem(draftKey(draftScope, date));
     if (raw) {
       try {
         const draft = JSON.parse(raw) as Person[];
@@ -52,18 +65,18 @@ export function AttendanceList({ groupId, groupName, date, initialPeople, alread
         setPeople(mergeDraft(initialPeople, draft));
         setRestored(true);
       } catch {
-        localStorage.removeItem(draftKey(groupId, date));
+        localStorage.removeItem(draftKey(draftScope, date));
       }
     }
     hydrated.current = true;
-  }, [groupId, date, initialPeople]);
+  }, [draftScope, date, initialPeople]);
 
   useEffect(() => {
     if (!hydrated.current) return;
     const changed = JSON.stringify(people) !== JSON.stringify(initialPeople);
-    if (changed) localStorage.setItem(draftKey(groupId, date), JSON.stringify(people));
-    else localStorage.removeItem(draftKey(groupId, date));
-  }, [people, initialPeople, groupId, date]);
+    if (changed) localStorage.setItem(draftKey(draftScope, date), JSON.stringify(people));
+    else localStorage.removeItem(draftKey(draftScope, date));
+  }, [people, initialPeople, draftScope, date]);
 
   const sorted = useMemo(() => [...people].sort((a, b) => compareNames(a.name, b.name)), [people]);
   const sections = [
@@ -126,9 +139,8 @@ export function AttendanceList({ groupId, groupName, date, initialPeople, alread
   function confirmSave() {
     setError(null);
     startSaving(async () => {
-      localStorage.removeItem(draftKey(groupId, date));
-      const result = await saveAttendance({
-        groupId,
+      localStorage.removeItem(draftKey(draftScope, date));
+      const result = await save({
         date,
         people: present.map((p) => ({
           memberId: p.memberId,
@@ -137,17 +149,44 @@ export function AttendanceList({ groupId, groupName, date, initialPeople, alread
           isVisitor: p.isVisitor,
         })),
       });
-      // Se chegou aqui, houve erro (sucesso redireciona).
-      if (result?.error) {
-        localStorage.setItem(draftKey(groupId, date), JSON.stringify(people));
-        dialogRef.current?.close();
+      // No modo líder o sucesso redireciona; no público volta { ok: true }.
+      dialogRef.current?.close();
+      if (result && "error" in result) {
+        localStorage.setItem(draftKey(draftScope, date), JSON.stringify(people));
         setError(result.error);
+      } else if (result && "ok" in result) {
+        setSavedOk(true);
+        window.scrollTo({ top: 0 });
       }
     });
   }
 
   const newMembers = present.filter((p) => p.added && !p.isVisitor && p.memberId === null);
   const suggestions = recentVisitors.filter((v) => !people.some((p) => sameName(p.name, v.name)));
+
+  if (savedOk) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <div className={`${card} p-6 text-center`}>
+          <CheckCircle2 className="mx-auto size-12 text-check" aria-hidden />
+          <h1 className="mt-3 text-xl font-bold">Presença confirmada!</h1>
+          <p className="mt-1 text-muted">
+            {counts.total} presentes em {formatBR(date)}. O líder do GC já consegue ver no painel.
+          </p>
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button type="button" onClick={copy} className={btn.whatsapp}>
+              <Copy className="size-4" aria-hidden /> Copiar lista para o WhatsApp
+            </button>
+            <button type="button" onClick={() => setSavedOk(false)} className={btn.secondary}>
+              Voltar à lista
+            </button>
+          </div>
+        </div>
+        <pre className={`${card} mt-4 p-4 text-sm whitespace-pre-wrap`}>{text}</pre>
+        <Toast message={toast} bottom="bottom-6" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-xl pb-20">
@@ -161,6 +200,8 @@ export function AttendanceList({ groupId, groupName, date, initialPeople, alread
           <input
             type="date"
             value={date}
+            min={minDate}
+            max={maxDate}
             onChange={(e) => {
               if (isISODate(e.target.value)) router.replace(`?data=${e.target.value}`);
             }}
@@ -249,7 +290,11 @@ export function AttendanceList({ groupId, groupName, date, initialPeople, alread
       </section>
 
       {/* Barra de ações fixa */}
-      <div className="fixed inset-x-0 bottom-14 z-10 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur md:bottom-0">
+      <div
+        className={`fixed inset-x-0 z-10 border-t border-border bg-surface/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur ${
+          isPublic ? "bottom-0" : "bottom-14 md:bottom-0"
+        }`}
+      >
         <div className="mx-auto flex max-w-xl items-center gap-2">
           <div className="mr-auto leading-tight" aria-live="polite">
             <div className="text-lg font-bold tabular-nums">{counts.total}</div>
@@ -313,14 +358,7 @@ export function AttendanceList({ groupId, groupName, date, initialPeople, alread
         </div>
       </dialog>
 
-      <div
-        role="status"
-        className={`pointer-events-none fixed inset-x-0 bottom-36 z-30 flex justify-center px-4 transition-opacity duration-200 md:bottom-24 ${
-          toast ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        {toast && <span className="rounded-full bg-fg px-4 py-2.5 text-sm text-white shadow-lg">{toast}</span>}
-      </div>
+      <Toast message={toast} bottom={isPublic ? "bottom-24" : "bottom-36 md:bottom-24"} />
     </div>
   );
 }
@@ -450,6 +488,19 @@ function AddPerson({ onAdd }: { onAdd: (name: string, kind: Person["kind"], isVi
         <p className="text-xs text-muted">Quem não é visitante entra como membro do GC ao confirmar.</p>
       )}
     </form>
+  );
+}
+
+function Toast({ message, bottom }: { message: string | null; bottom: string }) {
+  return (
+    <div
+      role="status"
+      className={`pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4 transition-opacity duration-200 ${bottom} ${
+        message ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      {message && <span className="rounded-full bg-fg px-4 py-2.5 text-sm text-white shadow-lg">{message}</span>}
+    </div>
   );
 }
 

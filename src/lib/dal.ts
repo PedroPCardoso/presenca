@@ -1,9 +1,9 @@
 import "server-only";
 import { cache } from "react";
 import { redirect, notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { groupLeaders, groups, users } from "@/db/schema";
+import { groupLeaders, groups, meetings, members, users } from "@/db/schema";
 import { readSession } from "./session";
 
 /**
@@ -32,6 +32,22 @@ export const getMyGroups = cache(async () => {
   const user = await requireUser();
   return db
     .select({ id: groups.id, name: groups.name })
+    .from(groups)
+    .innerJoin(groupLeaders, eq(groupLeaders.groupId, groups.id))
+    .where(eq(groupLeaders.userId, user.id))
+    .orderBy(groups.name);
+});
+
+/** GCs do usuário com nº de membros ativos e data do último encontro. */
+export const getMyGroupsWithStats = cache(async () => {
+  const user = await requireUser();
+  return db
+    .select({
+      id: groups.id,
+      name: groups.name,
+      members: sql<number>`(select count(*)::int from ${members} where ${members.groupId} = ${groups.id} and ${members.active})`,
+      lastMeeting: sql<string | null>`(select max(${meetings.date})::text from ${meetings} where ${meetings.groupId} = ${groups.id})`,
+    })
     .from(groups)
     .innerJoin(groupLeaders, eq(groupLeaders.groupId, groups.id))
     .where(eq(groupLeaders.userId, user.id))

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, formatBR, isISODate, todayISO } from "../dates";
+import { addDays, formatBR, isISODate, publicDateRange, todayISO } from "../dates";
 
 describe("dates", () => {
   it("valida datas ISO reais", () => {
@@ -17,5 +17,9 @@ describe("dates", () => {
   it("formata e soma dias", () => {
     expect(formatBR("2026-11-12")).toBe("12/11/2026");
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+  });
+
+  it("link público aceita hoje e os 7 dias anteriores", () => {
+    expect(publicDateRange(new Date("2026-11-13T15:00:00Z"))).toEqual({ min: "2026-11-06", max: "2026-11-13" });
   });
 });

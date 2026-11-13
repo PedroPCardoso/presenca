@@ -44,3 +44,9 @@ export function addDays(iso: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** Datas aceitas pelo link público: hoje e os 7 dias anteriores. */
+export function publicDateRange(now: Date = new Date()) {
+  const max = todayISO(now);
+  return { min: addDays(max, -7), max };
+}

@@ -6,6 +6,8 @@
 export type MeetingRecord = {
   id: number;
   date: string;
+  /** Quem confirmou: líder logado ou link público. */
+  via?: "lider" | "link";
   /** IDs dos membros presentes (não visitantes). */
   memberIds: number[];
   visitors: string[];

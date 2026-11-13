@@ -15,3 +15,19 @@ export function cleanName(raw: string): string {
 export function sameName(a: string, b: string): boolean {
   return collator.compare(cleanName(a), cleanName(b)) === 0;
 }
+
+/**
+ * Lê uma lista de nomes colada (um por linha, vírgula ou ponto e vírgula).
+ * Aceita listas do WhatsApp: remove numeração ("1. Ana"), marcadores ("- Ana"),
+ * caracteres invisíveis e ignora títulos em negrito/itálico ("*Adultos (20)*").
+ */
+export function parseNameList(text: string): string[] {
+  const names: string[] = [];
+  for (const raw of text.split(/\r?\n|,|;/)) {
+    const line = raw.replace(/[​-‍⁠﻿]/g, "").trim();
+    if (!line || /^[*_~]/.test(line)) continue;
+    const name = cleanName(line.replace(/^(\d+\s*[.)-]?|[-•*])\s*/, ""));
+    if (name && name.length <= 60 && !names.some((n) => sameName(n, name))) names.push(name);
+  }
+  return names;
+}

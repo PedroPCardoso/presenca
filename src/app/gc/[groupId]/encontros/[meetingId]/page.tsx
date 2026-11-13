@@ -48,6 +48,9 @@ export default async function MeetingPage({
         <div>
           <h1 className="text-2xl font-bold">{formatBR(meeting.date)}</h1>
           <p className="capitalize text-muted">{formatLong(meeting.date)}</p>
+          {meeting.submittedVia === "link" && (
+            <p className="mt-1 text-sm text-muted">Confirmado por alguém usando o link público</p>
+          )}
         </div>
         <Link href={`${base}/presenca?data=${meeting.date}`} className={btn.secondary}>
           <Pencil className="size-4" aria-hidden /> Editar lista
