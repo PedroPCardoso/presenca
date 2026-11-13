@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* Tokens semânticos (design system: Minimalism/Swiss, verde da lista original). */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: #f4f6f5;
+  --color-surface: #ffffff;
+  --color-fg: #17231d;
+  --color-muted: #55655d;
+  --color-border: #dde3df;
+  --color-border-strong: #b9c4be;
+
+  --color-primary: #1f6f4a;
+  --color-primary-hover: #185c3d;
+  --color-primary-soft: #e5f4ec;
+  --color-on-primary: #ffffff;
+  --color-check: #2f9e67;
+
+  --color-visitor: #92400e;
+  --color-visitor-soft: #fef3c7;
+  --color-visitor-border: #f59e0b;
+
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fee2e2;
+
+  --color-whatsapp: #25d366;
+  --color-on-whatsapp: #073b1f;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
