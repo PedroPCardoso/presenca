@@ -3,12 +3,13 @@
 Sistema simples para líderes de GC registrarem a presença dos encontros e
 acompanharem a frequência do grupo.
 
-- **Lista de presença**: toque no nome para marcar. Cada pessoa pode ser marcada
-  como visitante, e dá para adicionar gente na hora. Visitantes recentes aparecem
-  como sugestão. As marcações ficam salvas no aparelho até você confirmar.
-- **Confirmar**: grava o encontro no banco. Se você confirmar de novo na mesma
-  data, a lista salva é atualizada. Quem foi adicionado sem marcar "visitante" vira
-  membro do GC.
+- **Lista de presença**: toque no nome para marcar. Cada toque é salvo na hora, então
+  várias pessoas podem marcar ao mesmo tempo pelo link público. Cada pessoa pode ser
+  marcada como visitante, e dá para adicionar gente na hora. Visitantes recentes
+  aparecem como sugestão.
+- **Confirmar**: só o líder. Abre o link, revisa quem já marcou e confirma o encontro;
+  só então ele entra no painel e nas estatísticas. Quem foi adicionado sem marcar
+  "visitante" vira membro do GC ao confirmar.
 - **Copiar para o WhatsApp**: gera o texto formatado da lista.
 - **Painel**: número de encontros, média de presentes, gráfico por encontro,
   quem faltou nos últimos encontros seguidos e a frequência de cada membro.

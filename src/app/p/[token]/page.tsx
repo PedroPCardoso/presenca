@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Link2Off, Users } from "lucide-react";
-import { savePublicAttendance } from "@/actions/attendance";
+import { setPublicPresence } from "@/actions/attendance";
 import { AttendanceList } from "@/components/attendance-list";
 import { card } from "@/components/ui";
 import { isISODate, publicDateRange } from "@/lib/dates";
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * Lista de presença pública: qualquer pessoa com o link marca e confirma.
+ * Lista de presença pública: cada clique é salvo na hora e o líder confirma depois.
  * Não exige login; o token do link é a autorização (e só vale para datas recentes).
  */
 export default function PublicListPage({ params, searchParams }: PageProps<"/p/[token]">) {
@@ -28,10 +28,7 @@ export default function PublicListPage({ params, searchParams }: PageProps<"/p/[
   );
 }
 
-async function PublicList({
-  params,
-  searchParams,
-}: Pick<PageProps<"/p/[token]">, "params" | "searchParams">) {
+async function PublicList({ params, searchParams }: Pick<PageProps<"/p/[token]">, "params" | "searchParams">) {
   const { token } = await params;
   const { data } = await searchParams;
   const group = await findGroupByToken(token);
@@ -39,7 +36,7 @@ async function PublicList({
 
   const { min, max } = publicDateRange();
   const date = isISODate(data) && data >= min && data <= max ? data : max;
-  const { people, alreadySaved, recentVisitors } = await loadListState(group.id, date);
+  const { people, confirmed, recentVisitors } = await loadListState(group.id, date);
 
   return (
     <>
@@ -48,14 +45,13 @@ async function PublicList({
         <AttendanceList
           key={date}
           mode="public"
-          draftScope={`link:${token}`}
-          save={savePublicAttendance.bind(null, token)}
+          savePerson={setPublicPresence.bind(null, token)}
           minDate={min}
           maxDate={max}
           groupName={group.name}
           date={date}
           initialPeople={people}
-          alreadySaved={alreadySaved}
+          confirmed={confirmed}
           recentVisitors={recentVisitors}
         />
       </main>

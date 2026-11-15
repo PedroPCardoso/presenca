@@ -45,7 +45,14 @@ export async function loadRecentVisitors(groupId: number) {
     .select({ name: attendances.name, kind: attendances.kind })
     .from(attendances)
     .innerJoin(meetings, eq(meetings.id, attendances.meetingId))
-    .where(and(eq(meetings.groupId, groupId), eq(attendances.isVisitor, true), gte(meetings.date, since)))
+    .where(
+      and(
+        eq(meetings.groupId, groupId),
+        eq(meetings.confirmed, true),
+        eq(attendances.isVisitor, true),
+        gte(meetings.date, since),
+      ),
+    )
     .orderBy(desc(meetings.date));
   const seen = new Map<string, { name: string; kind: "adulto" | "crianca" }>();
   for (const r of rows) {
@@ -95,5 +102,5 @@ export async function loadListState(groupId: number, date: string) {
         added: true,
       })),
   ];
-  return { people, alreadySaved: !!existing, recentVisitors };
+  return { people, confirmed: existing?.confirmed ?? false, recentVisitors };
 }

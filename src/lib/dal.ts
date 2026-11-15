@@ -46,7 +46,9 @@ export const getMyGroupsWithStats = cache(async () => {
       id: groups.id,
       name: groups.name,
       members: sql<number>`(select count(*)::int from ${members} where ${members.groupId} = ${groups.id} and ${members.active})`,
-      lastMeeting: sql<string | null>`(select max(${meetings.date})::text from ${meetings} where ${meetings.groupId} = ${groups.id})`,
+      lastMeeting: sql<
+        string | null
+      >`(select max(${meetings.date})::text from ${meetings} where ${meetings.groupId} = ${groups.id} and ${meetings.confirmed})`,
     })
     .from(groups)
     .innerJoin(groupLeaders, eq(groupLeaders.groupId, groups.id))

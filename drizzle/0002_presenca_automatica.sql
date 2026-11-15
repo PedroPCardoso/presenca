@@ -1,0 +1,2 @@
+ALTER TABLE "meetings" ADD COLUMN "confirmed" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "attendances_meeting_name_uq" ON "attendances" USING btree ("meeting_id",lower("name"));

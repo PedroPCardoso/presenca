@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attendances, groups, meetings } from "@/db/schema";
 import { requireGroup } from "./dal";
@@ -44,14 +44,21 @@ export const getMeetingRecords = cache(async (groupId: number): Promise<MeetingR
     })
     .from(meetings)
     .leftJoin(attendances, eq(attendances.meetingId, meetings.id))
-    .where(eq(meetings.groupId, groupId))
+    .where(and(eq(meetings.groupId, groupId), eq(meetings.confirmed, true)))
     .orderBy(asc(meetings.date));
 
   const byId = new Map<number, MeetingRecord>();
   for (const r of rows) {
     let m = byId.get(r.id);
     if (!m) {
-      m = { id: r.id, date: r.date, via: r.via, memberIds: [], visitors: [], total: 0 };
+      m = {
+        id: r.id,
+        date: r.date,
+        via: r.via,
+        memberIds: [],
+        visitors: [],
+        total: 0,
+      };
       byId.set(r.id, m);
     }
     if (r.name === null) continue;

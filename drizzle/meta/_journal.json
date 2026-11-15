@@ -15,6 +15,13 @@
       "when": 1794592782109,
       "tag": "0001_link_publico",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794786041404,
+      "tag": "0002_presenca_automatica",
+      "breakpoints": true
     }
   ]
 }

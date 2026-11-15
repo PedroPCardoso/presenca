@@ -7,43 +7,73 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { groups, meetings } from "@/db/schema";
 import { canAccessGroup } from "@/lib/dal";
-import { persistAttendance } from "@/lib/attendance-service";
+import { confirmMeeting, setPresence } from "@/lib/attendance-service";
 import { findGroupByToken } from "@/lib/public-list";
 import { publicDateRange } from "@/lib/dates";
-import { listSubmissionSchema, type ListSubmission } from "@/lib/validation";
+import { dateSchema, presenceChangeSchema, type PresenceChangeInput } from "@/lib/validation";
 
 export type SaveResult = { error: string } | { ok: true } | undefined;
 
-/** Líder logado confirma a lista. Redireciona para o encontro salvo. */
-export async function saveAttendance(groupId: number, raw: ListSubmission): Promise<SaveResult> {
-  const parsed = listSubmissionSchema.safeParse(raw);
+/** Líder logado marca/desmarca uma pessoa. Salva na hora. */
+export async function setLeaderPresence(groupId: number, raw: PresenceChangeInput): Promise<SaveResult> {
+  const parsed = presenceChangeSchema.safeParse(raw);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos" };
   const access = await canAccessGroup(groupId);
   if (!access) return { error: "Sem permissão para este GC" };
-  if (parsed.data.people.length === 0) return { error: "Marque pelo menos uma pessoa" };
 
-  const meetingId = await persistAttendance({ groupId, ...parsed.data, userId: access.userId, via: "lider" });
+  await setPresence({
+    groupId,
+    date: parsed.data.date,
+    change: parsed.data,
+    userId: access.userId,
+    via: "lider",
+  });
   revalidatePath(`/gc/${groupId}`, "layout");
-  redirect(`/gc/${groupId}/encontros/${meetingId}?salvo=1`);
+  return { ok: true };
 }
 
-/** Qualquer pessoa com o link público confirma a lista (só datas recentes). */
-export async function savePublicAttendance(token: string, raw: ListSubmission): Promise<SaveResult> {
-  const parsed = listSubmissionSchema.safeParse(raw);
+/** Qualquer pessoa com o link público marca/desmarca uma pessoa (só datas recentes). Salva na hora. */
+export async function setPublicPresence(token: string, raw: PresenceChangeInput): Promise<SaveResult> {
+  const parsed = presenceChangeSchema.safeParse(raw);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos" };
   const group = await findGroupByToken(token);
-  if (!group) return { error: "Este link não está mais ativo. Peça um novo ao líder do GC." };
+  if (!group)
+    return {
+      error: "Este link não está mais ativo. Peça um novo ao líder do GC.",
+    };
 
   const { min, max } = publicDateRange();
   if (parsed.data.date < min || parsed.data.date > max) {
-    return { error: "Pelo link só dá para registrar encontros dos últimos 7 dias" };
+    return {
+      error: "Pelo link só dá para registrar encontros dos últimos 7 dias",
+    };
   }
-  if (parsed.data.people.length === 0) return { error: "Marque pelo menos uma pessoa" };
 
-  await persistAttendance({ groupId: group.id, ...parsed.data, userId: null, via: "link" });
+  await setPresence({
+    groupId: group.id,
+    date: parsed.data.date,
+    change: parsed.data,
+    userId: null,
+    via: "link",
+  });
   revalidatePath(`/gc/${group.id}`, "layout");
-  revalidatePath(`/p/${token}`);
   return { ok: true };
+}
+
+/** Só o líder confirma o encontro. Redireciona para o encontro confirmado. */
+export async function confirmAttendance(groupId: number, date: string): Promise<SaveResult> {
+  if (!dateSchema.safeParse(date).success) return { error: "Data inválida" };
+  const access = await canAccessGroup(groupId);
+  if (!access) return { error: "Sem permissão para este GC" };
+
+  const meetingId = await confirmMeeting({
+    groupId,
+    date,
+    userId: access.userId,
+  });
+  if (!meetingId) return { error: "Marque pelo menos uma pessoa" };
+  revalidatePath(`/gc/${groupId}`, "layout");
+  redirect(`/gc/${groupId}/encontros/${meetingId}?salvo=1`);
 }
 
 export async function deleteMeeting(groupId: number, meetingId: number) {

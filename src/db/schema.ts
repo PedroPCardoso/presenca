@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -86,6 +87,8 @@ export const meetings = pgTable(
     date: date("date", { mode: "string" }).notNull(),
     createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
     submittedVia: submittedVia("submitted_via").notNull().default("lider"),
+    /** false = presenças salvas clique a clique, aguardando o líder confirmar. */
+    confirmed: boolean("confirmed").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -111,6 +114,8 @@ export const attendances = pgTable(
   },
   (t) => [
     index("attendances_meeting_idx").on(t.meetingId),
+    /** Uma pessoa por encontro: cliques simultâneos não duplicam. */
+    uniqueIndex("attendances_meeting_name_uq").on(t.meetingId, sql`lower(${t.name})`),
     index("attendances_member_idx").on(t.memberId),
   ],
 );

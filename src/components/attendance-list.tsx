@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Check, CheckCircle2, Copy, Info, Loader2, Plus, UserPlus, X } from "lucide-react";
+import { AlertCircle, Check, CloudCheck, Copy, Info, Loader2, Plus, UserPlus, X } from "lucide-react";
 import type { SaveResult } from "@/actions/attendance";
-import type { ListSubmission } from "@/lib/validation";
+import type { PresenceChangeInput } from "@/lib/validation";
 import { btn, card, input } from "@/components/ui";
 import { formatBR, formatLong, isISODate } from "@/lib/dates";
 import { cleanName, compareNames, sameName } from "@/lib/names";
@@ -13,75 +13,58 @@ import { buildWhatsAppText } from "@/lib/whatsapp";
 import type { ListPerson as Person } from "@/lib/list-data";
 
 type Props = {
-  /** "leader": líder logado (redireciona ao salvar). "public": link público (mostra tela de sucesso). */
+  /** "leader": líder logado (pode confirmar o encontro). "public": link público (só marca). */
   mode: "leader" | "public";
-  /** Identifica o rascunho local (GC ou token). */
-  draftScope: string;
-  /** Server Action já ligada ao GC/token. */
-  save: (input: ListSubmission) => Promise<SaveResult>;
+  /** Server Action já ligada ao GC/token: salva uma marcação (um clique). */
+  savePerson: (input: PresenceChangeInput) => Promise<SaveResult>;
+  /** Só no modo líder: confirma o encontro do dia. */
+  confirm?: (date: string) => Promise<SaveResult>;
   /** Limites da data no link público. */
   minDate?: string;
   maxDate?: string;
   groupName: string;
   date: string;
   initialPeople: Person[];
-  alreadySaved: boolean;
+  /** O líder já confirmou este encontro. */
+  confirmed: boolean;
   recentVisitors: { name: string; kind: "adulto" | "crianca" }[];
 };
 
-const draftKey = (scope: string, date: string) => `gc-presenca:${scope}:${date}`;
-
 export function AttendanceList({
   mode,
-  draftScope,
-  save,
+  savePerson,
+  confirm,
   minDate,
   maxDate,
   groupName,
   date,
   initialPeople,
-  alreadySaved,
+  confirmed,
   recentVisitors,
 }: Props) {
   const isPublic = mode === "public";
   const router = useRouter();
   const [people, setPeople] = useState(initialPeople);
-  const [restored, setRestored] = useState(false);
   const [includeAbsent, setIncludeAbsent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saving, startSaving] = useTransition();
-  const [savedOk, setSavedOk] = useState(false);
+  const [inFlight, setInFlight] = useState(0);
+  const [confirming, startConfirming] = useTransition();
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const hydrated = useRef(false);
-
-  // Rascunho local: não perde as marcações se a página fechar antes de confirmar.
-  useEffect(() => {
-    const raw = localStorage.getItem(draftKey(draftScope, date));
-    if (raw) {
-      try {
-        const draft = JSON.parse(raw) as Person[];
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- leitura única do localStorage após montar
-        setPeople(mergeDraft(initialPeople, draft));
-        setRestored(true);
-      } catch {
-        localStorage.removeItem(draftKey(draftScope, date));
-      }
-    }
-    hydrated.current = true;
-  }, [draftScope, date, initialPeople]);
-
-  useEffect(() => {
-    if (!hydrated.current) return;
-    const changed = JSON.stringify(people) !== JSON.stringify(initialPeople);
-    if (changed) localStorage.setItem(draftKey(draftScope, date), JSON.stringify(people));
-    else localStorage.removeItem(draftKey(draftScope, date));
-  }, [people, initialPeople, draftScope, date]);
+  // Uma fila por pessoa: cliques rápidos na mesma pessoa chegam ao servidor na ordem.
+  const newKey = useRef(0);
+  const queues = useRef(new Map<string, Promise<unknown>>());
 
   const sorted = useMemo(() => [...people].sort((a, b) => compareNames(a.name, b.name)), [people]);
   const sections = [
-    { title: "Adultos", list: sorted.filter((p) => p.kind === "adulto" && !(p.added && p.isVisitor)) },
-    { title: "Crianças", list: sorted.filter((p) => p.kind === "crianca" && !(p.added && p.isVisitor)) },
+    {
+      title: "Adultos",
+      list: sorted.filter((p) => p.kind === "adulto" && !(p.added && p.isVisitor)),
+    },
+    {
+      title: "Crianças",
+      list: sorted.filter((p) => p.kind === "crianca" && !(p.added && p.isVisitor)),
+    },
     { title: "Visitantes", list: sorted.filter((p) => p.added && p.isVisitor) },
   ];
 
@@ -98,9 +81,52 @@ export function AttendanceList({
     includeAbsent,
   });
 
-  const update = (key: string, patch: Partial<Person>) =>
-    setPeople((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
-  const remove = (key: string) => setPeople((list) => list.filter((p) => p.key !== key));
+  /** Aplica a mudança na tela na hora e salva no servidor; se falhar, volta ao estado anterior. */
+  function commit(prev: Person | undefined, next: Person) {
+    setError(null);
+    setPeople((list) =>
+      list.some((p) => p.key === next.key) ? list.map((p) => (p.key === next.key ? next : p)) : [...list, next],
+    );
+    setInFlight((n) => n + 1);
+    const queueKey = next.name.toLocaleLowerCase("pt-BR");
+    const job = (queues.current.get(queueKey) ?? Promise.resolve())
+      .then(() =>
+        savePerson({
+          date,
+          memberId: next.memberId,
+          name: next.name,
+          kind: next.kind,
+          isVisitor: next.isVisitor,
+          present: next.present,
+        }),
+      )
+      .then((result) => {
+        if (result && "error" in result) throw new Error(result.error);
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error && e.message ? e.message : "Não foi possível salvar. Tente de novo.");
+        setPeople((list) =>
+          prev
+            ? list.some((p) => p.key === prev.key)
+              ? list.map((p) => (p.key === prev.key ? prev : p))
+              : [...list, prev]
+            : list.filter((p) => p.key !== next.key),
+        );
+      })
+      .finally(() => setInFlight((n) => n - 1));
+    queues.current.set(queueKey, job);
+  }
+
+  const update = (key: string, patch: Partial<Person>) => {
+    const prev = people.find((p) => p.key === key);
+    if (prev) commit(prev, { ...prev, ...patch });
+  };
+  const remove = (key: string) => {
+    const prev = people.find((p) => p.key === key);
+    if (!prev) return;
+    commit(prev, { ...prev, present: false });
+    setPeople((list) => list.filter((p) => p.key !== key));
+  };
 
   function addPerson(name: string, kind: Person["kind"], isVisitor: boolean) {
     const clean = cleanName(name);
@@ -111,10 +137,15 @@ export function AttendanceList({
       showToast(`${existing.name} já estava na lista — marcado(a) como presente`);
       return;
     }
-    setPeople((list) => [
-      ...list,
-      { key: `n${Date.now()}`, memberId: null, name: clean, kind, isVisitor, present: true, added: true },
-    ]);
+    commit(undefined, {
+      key: `n${++newKey.current}`,
+      memberId: null,
+      name: clean,
+      kind,
+      isVisitor,
+      present: true,
+      added: true,
+    });
   }
 
   function showToast(msg: string) {
@@ -136,57 +167,19 @@ export function AttendanceList({
     showToast("Lista copiada! Cole no WhatsApp");
   }
 
-  function confirmSave() {
+  function confirmMeeting() {
+    if (!confirm) return;
     setError(null);
-    startSaving(async () => {
-      localStorage.removeItem(draftKey(draftScope, date));
-      const result = await save({
-        date,
-        people: present.map((p) => ({
-          memberId: p.memberId,
-          name: p.name,
-          kind: p.kind,
-          isVisitor: p.isVisitor,
-        })),
-      });
-      // No modo líder o sucesso redireciona; no público volta { ok: true }.
+    startConfirming(async () => {
+      // O sucesso redireciona para o encontro; só volta aqui se der erro.
+      const result = await confirm(date);
       dialogRef.current?.close();
-      if (result && "error" in result) {
-        localStorage.setItem(draftKey(draftScope, date), JSON.stringify(people));
-        setError(result.error);
-      } else if (result && "ok" in result) {
-        setSavedOk(true);
-        window.scrollTo({ top: 0 });
-      }
+      if (result && "error" in result) setError(result.error);
     });
   }
 
   const newMembers = present.filter((p) => p.added && !p.isVisitor && p.memberId === null);
   const suggestions = recentVisitors.filter((v) => !people.some((p) => sameName(p.name, v.name)));
-
-  if (savedOk) {
-    return (
-      <div className="mx-auto max-w-xl">
-        <div className={`${card} p-6 text-center`}>
-          <CheckCircle2 className="mx-auto size-12 text-check" aria-hidden />
-          <h1 className="mt-3 text-xl font-bold">Presença confirmada!</h1>
-          <p className="mt-1 text-muted">
-            {counts.total} presentes em {formatBR(date)}. O líder do GC já consegue ver no painel.
-          </p>
-          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
-            <button type="button" onClick={copy} className={btn.whatsapp}>
-              <Copy className="size-4" aria-hidden /> Copiar lista para o WhatsApp
-            </button>
-            <button type="button" onClick={() => setSavedOk(false)} className={btn.secondary}>
-              Voltar à lista
-            </button>
-          </div>
-        </div>
-        <pre className={`${card} mt-4 p-4 text-sm whitespace-pre-wrap`}>{text}</pre>
-        <Toast message={toast} bottom="bottom-6" />
-      </div>
-    );
-  }
 
   return (
     <div className="mx-auto max-w-xl pb-20">
@@ -210,26 +203,17 @@ export function AttendanceList({
         </label>
       </div>
 
-      {alreadySaved && (
+      {isPublic ? (
         <Notice icon={Info}>
-          Este encontro já foi registrado. Ao confirmar de novo, a lista salva é atualizada.
+          Toque no seu nome para marcar presença. Cada toque já fica salvo e o líder confirma depois.
         </Notice>
-      )}
-      {restored && (
+      ) : confirmed ? (
+        <Notice icon={Info}>Este encontro já foi confirmado. Mudanças aqui são salvas na hora.</Notice>
+      ) : counts.total > 0 ? (
         <Notice icon={Info}>
-          Recuperamos as marcações que você fez e ainda não confirmou.{" "}
-          <button
-            type="button"
-            className="cursor-pointer font-semibold underline"
-            onClick={() => {
-              setPeople(initialPeople);
-              setRestored(false);
-            }}
-          >
-            Descartar
-          </button>
+          Presenças salvas, aguardando a sua confirmação. Revise a lista e toque em Confirmar.
         </Notice>
-      )}
+      ) : null}
       {error && (
         <Notice icon={AlertCircle} tone="danger">
           {error}
@@ -298,65 +282,79 @@ export function AttendanceList({
         <div className="mx-auto flex max-w-xl items-center gap-2">
           <div className="mr-auto leading-tight" aria-live="polite">
             <div className="text-lg font-bold tabular-nums">{counts.total}</div>
-            <div className="text-xs text-muted">
-              presentes{counts.visitors ? ` · ${counts.visitors} visit.` : ""}
-            </div>
+            <div className="text-xs text-muted">presentes{counts.visitors ? ` · ${counts.visitors} visit.` : ""}</div>
           </div>
           <button type="button" onClick={copy} className={btn.secondary}>
             <Copy className="size-4" aria-hidden />
             Copiar
           </button>
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.showModal()}
-            disabled={counts.total === 0}
-            className={btn.primary}
-          >
-            <Check className="size-4" aria-hidden />
-            Confirmar
-          </button>
+          {isPublic ? (
+            <span className="flex items-center gap-1.5 text-sm text-muted" aria-live="polite">
+              {inFlight > 0 ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <CloudCheck className="size-4 text-check" aria-hidden />
+              )}
+              {inFlight > 0 ? "Salvando…" : "Salvo"}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => dialogRef.current?.showModal()}
+              disabled={counts.total === 0 || inFlight > 0}
+              className={btn.primary}
+            >
+              {inFlight > 0 ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Check className="size-4" aria-hidden />
+              )}
+              {confirmed ? "Reconfirmar" : "Confirmar"}
+            </button>
+          )}
         </div>
       </div>
 
-      <dialog
-        ref={dialogRef}
-        aria-labelledby="confirm-title"
-        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl p-0 backdrop:bg-black/40"
-      >
-        <div className="p-5">
-          <h2 id="confirm-title" className="text-lg font-bold">
-            Confirmar presença de {formatBR(date)}?
-          </h2>
-          <ul className="mt-3 space-y-1 text-[15px]">
-            <li>
-              <strong className="tabular-nums">{counts.total - counts.visitors}</strong> membros
-            </li>
-            <li>
-              <strong className="tabular-nums">{counts.visitors}</strong> visitantes
-            </li>
-          </ul>
-          {newMembers.length > 0 && (
-            <p className="mt-3 rounded-xl bg-primary-soft p-3 text-sm text-primary">
-              Entram como novos membros do GC: {newMembers.map((p) => p.name).join(", ")}
-            </p>
-          )}
-          {alreadySaved && <p className="mt-3 text-sm text-muted">A lista salva antes será substituída.</p>}
-          <div className="mt-5 flex gap-2">
-            <button
-              type="button"
-              onClick={() => dialogRef.current?.close()}
-              className={`${btn.secondary} flex-1`}
-              disabled={saving}
-            >
-              Voltar
-            </button>
-            <button type="button" onClick={confirmSave} className={`${btn.primary} flex-1`} disabled={saving}>
-              {saving && <Loader2 className="size-4 animate-spin" aria-hidden />}
-              {saving ? "Salvando…" : "Confirmar"}
-            </button>
+      {!isPublic && (
+        <dialog
+          ref={dialogRef}
+          aria-labelledby="confirm-title"
+          className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl p-0 backdrop:bg-black/40"
+        >
+          <div className="p-5">
+            <h2 id="confirm-title" className="text-lg font-bold">
+              Confirmar presença de {formatBR(date)}?
+            </h2>
+            <ul className="mt-3 space-y-1 text-[15px]">
+              <li>
+                <strong className="tabular-nums">{counts.total - counts.visitors}</strong> membros
+              </li>
+              <li>
+                <strong className="tabular-nums">{counts.visitors}</strong> visitantes
+              </li>
+            </ul>
+            {newMembers.length > 0 && (
+              <p className="mt-3 rounded-xl bg-primary-soft p-3 text-sm text-primary">
+                Entram como novos membros do GC: {newMembers.map((p) => p.name).join(", ")}
+              </p>
+            )}
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => dialogRef.current?.close()}
+                className={`${btn.secondary} flex-1`}
+                disabled={confirming}
+              >
+                Voltar
+              </button>
+              <button type="button" onClick={confirmMeeting} className={`${btn.primary} flex-1`} disabled={confirming}>
+                {confirming && <Loader2 className="size-4 animate-spin" aria-hidden />}
+                {confirming ? "Confirmando…" : "Confirmar"}
+              </button>
+            </div>
           </div>
-        </div>
-      </dialog>
+        </dialog>
+      )}
 
       <Toast message={toast} bottom={isPublic ? "bottom-24" : "bottom-36 md:bottom-24"} />
     </div>
@@ -397,7 +395,12 @@ function PersonRow({
       <button
         type="button"
         aria-pressed={p.isVisitor}
-        onClick={() => onChange(p.key, { isVisitor: !p.isVisitor, present: p.isVisitor ? p.present : true })}
+        onClick={() =>
+          onChange(p.key, {
+            isVisitor: !p.isVisitor,
+            present: p.isVisitor ? p.present : true,
+          })
+        }
         className={`min-h-9 shrink-0 cursor-pointer rounded-full border px-3 text-xs font-semibold transition-colors ${
           p.isVisitor
             ? "border-visitor-border bg-visitor-soft text-visitor"
@@ -484,9 +487,7 @@ function AddPerson({ onAdd }: { onAdd: (name: string, kind: Person["kind"], isVi
           É visitante
         </label>
       </div>
-      {!visitor && (
-        <p className="text-xs text-muted">Quem não é visitante entra como membro do GC ao confirmar.</p>
-      )}
+      {!visitor && <p className="text-xs text-muted">Quem não é visitante entra como membro do GC ao confirmar.</p>}
     </form>
   );
 }
@@ -524,15 +525,4 @@ function Notice({
       <span>{children}</span>
     </p>
   );
-}
-
-/** Aplica o rascunho por cima da lista atual (membros novos/removidos continuam corretos). */
-function mergeDraft(base: Person[], draft: Person[]): Person[] {
-  const byKey = new Map(draft.map((p) => [p.key, p]));
-  const merged = base.map((p) => {
-    const d = byKey.get(p.key);
-    return d ? { ...p, present: d.present, isVisitor: d.isVisitor } : p;
-  });
-  const extras = draft.filter((d) => d.added && !base.some((p) => p.key === d.key));
-  return [...merged, ...extras];
 }
