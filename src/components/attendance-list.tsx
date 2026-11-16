@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Check, CloudCheck, Copy, Info, Loader2, Plus, UserPlus, X } from "lucide-react";
-import type { SaveResult } from "@/actions/attendance";
+import type { ListSnapshot, SaveResult } from "@/actions/attendance";
 import type { PresenceChangeInput } from "@/lib/validation";
 import { btn, card, input } from "@/components/ui";
 import { formatBR, formatLong, isISODate } from "@/lib/dates";
@@ -17,6 +17,8 @@ type Props = {
   mode: "leader" | "public";
   /** Server Action já ligada ao GC/token: salva uma marcação (um clique). */
   savePerson: (input: PresenceChangeInput) => Promise<SaveResult>;
+  /** Busca o estado atual no servidor (recarregamento automático). */
+  poll: () => Promise<ListSnapshot>;
   /** Só no modo líder: confirma o encontro do dia. */
   confirm?: (date: string) => Promise<SaveResult>;
   /** Limites da data no link público. */
@@ -33,18 +35,20 @@ type Props = {
 export function AttendanceList({
   mode,
   savePerson,
+  poll,
   confirm,
   minDate,
   maxDate,
   groupName,
   date,
   initialPeople,
-  confirmed,
+  confirmed: initialConfirmed,
   recentVisitors,
 }: Props) {
   const isPublic = mode === "public";
   const router = useRouter();
   const [people, setPeople] = useState(initialPeople);
+  const [confirmed, setConfirmed] = useState(initialConfirmed);
   const [includeAbsent, setIncludeAbsent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +57,42 @@ export function AttendanceList({
   const dialogRef = useRef<HTMLDialogElement>(null);
   // Uma fila por pessoa: cliques rápidos na mesma pessoa chegam ao servidor na ordem.
   const newKey = useRef(0);
+  // Conta cada início/fim de salvamento local: um snapshot do servidor pedido antes disso está velho.
+  const mutationSeq = useRef(0);
+  const inFlightRef = useRef(0);
   const queues = useRef(new Map<string, Promise<unknown>>());
+
+  // Tempo real: consulta o servidor a cada poucos segundos e mostra quem já marcou.
+  const pollRef = useRef(poll);
+  useEffect(() => {
+    pollRef.current = poll;
+  });
+  useEffect(() => {
+    let stopped = false;
+    let busy = false;
+    async function tick() {
+      if (busy || document.visibilityState !== "visible") return;
+      busy = true;
+      const seq = mutationSeq.current;
+      try {
+        const snap = await pollRef.current();
+        if (stopped || !snap || inFlightRef.current > 0 || seq !== mutationSeq.current) return;
+        setPeople((cur) => (sameList(cur, snap.people) ? cur : snap.people));
+        setConfirmed(snap.confirmed);
+      } catch {
+        // sem rede: tenta de novo no próximo ciclo
+      } finally {
+        busy = false;
+      }
+    }
+    const id = setInterval(tick, 4000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
 
   const sorted = useMemo(() => [...people].sort((a, b) => compareNames(a.name, b.name)), [people]);
   const sections = [
@@ -88,6 +127,8 @@ export function AttendanceList({
       list.some((p) => p.key === next.key) ? list.map((p) => (p.key === next.key ? next : p)) : [...list, next],
     );
     setInFlight((n) => n + 1);
+    inFlightRef.current++;
+    mutationSeq.current++;
     const queueKey = next.name.toLocaleLowerCase("pt-BR");
     const job = (queues.current.get(queueKey) ?? Promise.resolve())
       .then(() =>
@@ -113,7 +154,11 @@ export function AttendanceList({
             : list.filter((p) => p.key !== next.key),
         );
       })
-      .finally(() => setInFlight((n) => n - 1));
+      .finally(() => {
+        setInFlight((n) => n - 1);
+        inFlightRef.current--;
+        mutationSeq.current++;
+      });
     queues.current.set(queueKey, job);
   }
 
@@ -525,4 +570,8 @@ function Notice({
       <span>{children}</span>
     </p>
   );
+}
+
+function sameList(a: Person[], b: Person[]) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }

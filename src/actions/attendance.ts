@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { groups, meetings } from "@/db/schema";
 import { canAccessGroup } from "@/lib/dal";
 import { confirmMeeting, setPresence } from "@/lib/attendance-service";
+import { loadListState, type ListPerson } from "@/lib/list-data";
 import { findGroupByToken } from "@/lib/public-list";
 import { publicDateRange } from "@/lib/dates";
 import { dateSchema, presenceChangeSchema, type PresenceChangeInput } from "@/lib/validation";
@@ -74,6 +75,24 @@ export async function confirmAttendance(groupId: number, date: string): Promise<
   if (!meetingId) return { error: "Marque pelo menos uma pessoa" };
   revalidatePath(`/gc/${groupId}`, "layout");
   redirect(`/gc/${groupId}/encontros/${meetingId}?salvo=1`);
+}
+
+export type ListSnapshot = { people: ListPerson[]; confirmed: boolean } | null;
+
+/** Estado atual da lista no servidor (usado pelo recarregamento automático da tela). */
+export async function pollLeaderList(groupId: number, date: string): Promise<ListSnapshot> {
+  if (!dateSchema.safeParse(date).success || !(await canAccessGroup(groupId))) return null;
+  const { people, confirmed } = await loadListState(groupId, date);
+  return { people, confirmed };
+}
+
+export async function pollPublicList(token: string, date: string): Promise<ListSnapshot> {
+  if (!dateSchema.safeParse(date).success) return null;
+  const group = await findGroupByToken(token);
+  const { min, max } = publicDateRange();
+  if (!group || date < min || date > max) return null;
+  const { people, confirmed } = await loadListState(group.id, date);
+  return { people, confirmed };
 }
 
 export async function deleteMeeting(groupId: number, meetingId: number) {
