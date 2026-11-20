@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Check, CloudCheck, Copy, Info, Loader2, Plus, UserPlus, X } from "lucide-react";
+import { AlertCircle, Check, Copy, Info, Loader2, Plus, UserPlus, X } from "lucide-react";
 import type { ListSnapshot, SaveResult } from "@/actions/attendance";
 import type { PresenceChangeInput } from "@/lib/validation";
 import { btn, card, input } from "@/components/ui";
@@ -13,14 +13,14 @@ import { buildWhatsAppText } from "@/lib/whatsapp";
 import type { ListPerson as Person } from "@/lib/list-data";
 
 type Props = {
-  /** "leader": líder logado (pode confirmar o encontro). "public": link público (só marca). */
+  /** "leader": líder logado. "public": link público. Os dois marcam e concluem. */
   mode: "leader" | "public";
   /** Server Action já ligada ao GC/token: salva uma marcação (um clique). */
   savePerson: (input: PresenceChangeInput) => Promise<SaveResult>;
   /** Busca o estado atual no servidor (recarregamento automático). */
   poll: () => Promise<ListSnapshot>;
-  /** Só no modo líder: confirma o encontro do dia. */
-  confirm?: (date: string) => Promise<SaveResult>;
+  /** Conclui o encontro do dia. */
+  confirm: (date: string) => Promise<SaveResult>;
   /** Limites da data no link público. */
   minDate?: string;
   maxDate?: string;
@@ -213,13 +213,17 @@ export function AttendanceList({
   }
 
   function confirmMeeting() {
-    if (!confirm) return;
     setError(null);
     startConfirming(async () => {
       // O sucesso redireciona para o encontro; só volta aqui se der erro.
       const result = await confirm(date);
       dialogRef.current?.close();
       if (result && "error" in result) setError(result.error);
+      else if (result && "ok" in result) {
+        // Link público não redireciona: só marca como concluído.
+        setConfirmed(true);
+        showToast("Presença concluída!");
+      }
     });
   }
 
@@ -248,16 +252,14 @@ export function AttendanceList({
         </label>
       </div>
 
-      {isPublic ? (
+      {confirmed ? (
+        <Notice icon={Info}>Este encontro já foi concluído. Mudanças aqui são salvas na hora.</Notice>
+      ) : isPublic ? (
         <Notice icon={Info}>
-          Toque no seu nome para marcar presença. Cada toque já fica salvo e o líder confirma depois.
+          Toque no seu nome para marcar presença. Cada toque já fica salvo. Quando todos marcarem, toque em Concluir.
         </Notice>
-      ) : confirmed ? (
-        <Notice icon={Info}>Este encontro já foi confirmado. Mudanças aqui são salvas na hora.</Notice>
       ) : counts.total > 0 ? (
-        <Notice icon={Info}>
-          Presenças salvas, aguardando a sua confirmação. Revise a lista e toque em Confirmar.
-        </Notice>
+        <Notice icon={Info}>Presenças salvas, ainda não concluídas. Revise a lista e toque em Concluir.</Notice>
       ) : null}
       {error && (
         <Notice icon={AlertCircle} tone="danger">
@@ -333,34 +335,23 @@ export function AttendanceList({
             <Copy className="size-4" aria-hidden />
             Copiar
           </button>
-          {isPublic ? (
-            <span className="flex items-center gap-1.5 text-sm text-muted" aria-live="polite">
-              {inFlight > 0 ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <CloudCheck className="size-4 text-check" aria-hidden />
-              )}
-              {inFlight > 0 ? "Salvando…" : "Salvo"}
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => dialogRef.current?.showModal()}
-              disabled={counts.total === 0 || inFlight > 0}
-              className={btn.primary}
-            >
-              {inFlight > 0 ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Check className="size-4" aria-hidden />
-              )}
-              {confirmed ? "Reconfirmar" : "Confirmar"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => dialogRef.current?.showModal()}
+            disabled={counts.total === 0 || inFlight > 0}
+            className={btn.primary}
+          >
+            {inFlight > 0 ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Check className="size-4" aria-hidden />
+            )}
+            {inFlight > 0 ? "Salvando…" : confirmed ? "Reconfirmar" : "Concluir"}
+          </button>
         </div>
       </div>
 
-      {!isPublic && (
+      {
         <dialog
           ref={dialogRef}
           aria-labelledby="confirm-title"
@@ -368,7 +359,7 @@ export function AttendanceList({
         >
           <div className="p-5">
             <h2 id="confirm-title" className="text-lg font-bold">
-              Confirmar presença de {formatBR(date)}?
+              Concluir presença de {formatBR(date)}?
             </h2>
             <ul className="mt-3 space-y-1 text-[15px]">
               <li>
@@ -394,12 +385,12 @@ export function AttendanceList({
               </button>
               <button type="button" onClick={confirmMeeting} className={`${btn.primary} flex-1`} disabled={confirming}>
                 {confirming && <Loader2 className="size-4 animate-spin" aria-hidden />}
-                {confirming ? "Confirmando…" : "Confirmar"}
+                {confirming ? "Concluindo…" : "Concluir"}
               </button>
             </div>
           </div>
         </dialog>
-      )}
+      }
 
       <Toast message={toast} bottom={isPublic ? "bottom-24" : "bottom-36 md:bottom-24"} />
     </div>

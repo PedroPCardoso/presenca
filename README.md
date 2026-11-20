@@ -7,9 +7,9 @@ acompanharem a frequência do grupo.
   várias pessoas podem marcar ao mesmo tempo pelo link público. Cada pessoa pode ser
   marcada como visitante, e dá para adicionar gente na hora. Visitantes recentes
   aparecem como sugestão.
-- **Confirmar**: só o líder. Abre o link, revisa quem já marcou e confirma o encontro;
-  só então ele entra no painel e nas estatísticas. Quem foi adicionado sem marcar
-  "visitante" vira membro do GC ao confirmar.
+- **Concluir**: qualquer pessoa (líder ou quem tem o link) toca em Concluir quando a lista
+  está completa; só então o encontro entra no painel e nas estatísticas. Quem foi adicionado sem marcar
+  "visitante" vira membro do GC ao concluir.
 - **Copiar para o WhatsApp**: gera o texto formatado da lista.
 - **Painel**: número de encontros, média de presentes, gráfico por encontro,
   quem faltou nos últimos encontros seguidos e a frequência de cada membro.

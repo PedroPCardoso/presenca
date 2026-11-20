@@ -95,6 +95,20 @@ export async function pollPublicList(token: string, date: string): Promise<ListS
   return { people, confirmed };
 }
 
+/** Qualquer pessoa com o link conclui o encontro. Não redireciona: a tela mostra "concluído". */
+export async function confirmPublicAttendance(token: string, date: string): Promise<SaveResult> {
+  if (!dateSchema.safeParse(date).success) return { error: "Data inválida" };
+  const group = await findGroupByToken(token);
+  if (!group) return { error: "Este link não está mais ativo. Peça um novo ao líder do GC." };
+  const { min, max } = publicDateRange();
+  if (date < min || date > max) return { error: "Pelo link só dá para registrar encontros dos últimos 7 dias" };
+
+  const meetingId = await confirmMeeting({ groupId: group.id, date, userId: null });
+  if (!meetingId) return { error: "Marque pelo menos uma pessoa" };
+  revalidatePath(`/gc/${group.id}`, "layout");
+  return { ok: true };
+}
+
 export async function deleteMeeting(groupId: number, meetingId: number) {
   const access = await canAccessGroup(groupId);
   if (!access) return;

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Link2Off, Users } from "lucide-react";
-import { pollPublicList, setPublicPresence } from "@/actions/attendance";
+import { confirmPublicAttendance, pollPublicList, setPublicPresence } from "@/actions/attendance";
 import { AttendanceList } from "@/components/attendance-list";
 import { card } from "@/components/ui";
 import { isISODate, publicDateRange } from "@/lib/dates";
@@ -46,6 +46,7 @@ async function PublicList({ params, searchParams }: Pick<PageProps<"/p/[token]">
           key={date}
           mode="public"
           savePerson={setPublicPresence.bind(null, token)}
+          confirm={confirmPublicAttendance.bind(null, token)}
           poll={pollPublicList.bind(null, token, date)}
           minDate={min}
           maxDate={max}

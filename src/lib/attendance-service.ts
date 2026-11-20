@@ -76,7 +76,15 @@ export async function setPresence(opts: {
  * Líder confirma o encontro do dia: quem foi marcado e não é visitante nem
  * membro ainda vira membro do GC. Devolve o id do encontro (ou null se ninguém marcou).
  */
-export async function confirmMeeting({ groupId, date, userId }: { groupId: number; date: string; userId: number }) {
+export async function confirmMeeting({
+  groupId,
+  date,
+  userId,
+}: {
+  groupId: number;
+  date: string;
+  userId: number | null;
+}) {
   return db.transaction(async (tx) => {
     const [meeting] = await tx
       .select({ id: meetings.id })
@@ -120,7 +128,7 @@ export async function confirmMeeting({ groupId, date, userId }: { groupId: numbe
 
     await tx
       .update(meetings)
-      .set({ confirmed: true, createdBy: userId, updatedAt: sql`now()` })
+      .set({ confirmed: true, ...(userId ? { createdBy: userId } : {}), updatedAt: sql`now()` })
       .where(eq(meetings.id, meeting.id));
     return meeting.id;
   });
